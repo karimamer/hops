@@ -4,7 +4,7 @@
 {-# LANGUAGE PolyKinds #-}
 
 -- |
--- Copyright   : Anders Claesson 2015, 2016
+-- Copyright   : Anders Claesson 2015-2017
 -- Maintainer  : Anders Claesson <anders.claesson@gmail.com>
 -- License     : BSD-3
 --
@@ -14,11 +14,12 @@ module Main (main) where
 import GHC.TypeLits
 import Data.Proxy
 import Data.Maybe
-import Data.Monoid
+import Data.Ratio
+import Data.Semigroup
 import qualified Data.Map as M
 import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy.Char8 as BL
-import Data.Aeson
+import Data.Aeson (decodeStrict', encode)
 import Control.Parallel.Strategies
 import System.Directory
 import System.IO
@@ -29,16 +30,15 @@ import HOPS.Config
 import HOPS.Download
 import HOPS.DB
 import HOPS.GF
-import HOPS.GF.Series
 
 versionString :: String
-versionString = "0.6.0"
+versionString = "0.8.3"
 
 seqsURL :: String
 seqsURL = "https://oeis.org/stripped.gz"
 
 data Input (n :: Nat)
-    = RunPrgs (Env n) [Prg] [CorePrg] [Entry]
+    = RunPrgs (Env n) [Expr] [Core] [Entry]
     | TagSeqs Int [Sequence]
     | UpdateDBs FilePath FilePath
     | Empty
@@ -59,16 +59,16 @@ decodeErr = fromMaybe (error "error decoding JSON") . decodeStrict'
 readEntries :: IO [Entry]
 readEntries = map decodeErr <$> readStdin
 
-readPrgs :: Options -> IO ([Prg], [CorePrg])
+readPrgs :: Options -> IO ([Expr], [Core])
 readPrgs opts = do
-    prgs <- filter (not . null . commands) . map parsePrgErr <$>
+    prgs <- concatMap (expand . parseExprErr) <$>
                 if script opts == ""
                 then return (map B.pack (program opts))
                 else lines' <$> BL.readFile (script opts)
-    return (prgs, map core prgs)
+    return (prgs, core <$> prgs)
 
 mkEntry :: (ANum, Sequence) -> Entry
-mkEntry (ANum a, s) = Entry (aNumPrg a) s []
+mkEntry (ANum a, s) = Entry (aNumExpr a) s []
 
 readDB :: Config -> IO [Entry]
 readDB = fmap (map mkEntry . parseStripped . unDB) . readSeqDB
@@ -100,14 +100,17 @@ printOutput (Entries es) = mapM_ (BL.putStrLn . encode) es
 stdEnv :: KnownNat n => Proxy n -> Env n -> Sequence -> Env n
 stdEnv n (Env a v) s = Env a $ M.insert "stdin" (series n (map Val s)) v
 
-runPrgs :: KnownNat n => [Env n] -> [CorePrg] -> [Sequence]
+evalMany :: KnownNat n => Env n -> [Core] -> [Sequence]
+evalMany env = map (rationalPrefix . evalCore env)
+
+runPrgs :: KnownNat n => [Env n] -> [Core] -> [Sequence]
 runPrgs envs progs =
-    concat ( [rationalPrefix <$> evalCorePrgs e progs
-             | e <- envs
+    concat ( [ evalMany env progs
+             | env <- envs
              ] `using` parBuffer 256 rdeepseq )
 
-hops :: KnownNat n => Proxy n -> Input n -> IO Output
-hops n inp =
+hops :: KnownNat n => Options -> Proxy n -> Input n -> IO Output
+hops opts n inp =
     case inp of
 
       UpdateDBs hopsdir sdbPath -> do
@@ -118,12 +121,17 @@ hops n inp =
           return NOP
 
       TagSeqs i0 ts ->
-          return $ Entries [ Entry (tagPrg i) t [] | (i, t) <- zip [i0 .. ] ts ]
+          return $ Entries [ Entry (tagExpr i) t [] | (i, t) <- zip [i0 .. ] ts ]
 
       Empty -> putStrLn ("hops " ++ versionString) >> return NOP
 
       RunPrgs env prgs cprgs entries ->
-          return $ Entries (zipWith3 Entry ps results (trails ++ repeat []))
+          return $ Entries
+             [ Entry p f t
+             | (p, f, t) <- zip3 ps results (trails ++ repeat [])
+             , not (int opts) || all (\r -> denominator r == 1) f
+             , minPrec opts == 0 || minPrec opts <= length f
+             ]
         where
           (qs, seqs, trails) = unzip3 [ (q,s,t) | Entry q s t <- entries ]
           results = runPrgs envs cprgs
@@ -140,4 +148,4 @@ main = do
     case someNatVal d of
       Nothing -> error $ show d ++ " not a valid prec"
       Just (SomeNat (_ :: Proxy n)) ->
-          readInput t c >>= hops (Proxy :: Proxy n) >>= printOutput
+          readInput t c >>= hops t (Proxy :: Proxy n) >>= printOutput

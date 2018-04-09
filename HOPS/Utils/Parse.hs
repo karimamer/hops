@@ -6,8 +6,9 @@
 -- License     : BSD-3
 --
 
-module HOPS.Utils
-    ( pad
+module HOPS.Utils.Parse
+    ( bracket
+    , curly
     , paren
     , parens
     , oneOf
@@ -21,13 +22,11 @@ import Data.ByteString.Char8 (ByteString)
 import Data.Attoparsec.ByteString.Char8
 import Control.Applicative
 
--- | @pad d n@ packs the integer @n@ into a `ByteString` padding with
--- \'0\' on the right to achieve length @d@.
---
--- > pad 6 123 = "000123"
---
-pad :: Int -> Int -> ByteString
-pad d n = B.replicate (d - B.length s) '0' <> s where s = B.pack (show n)
+bracket :: ByteString -> ByteString
+bracket s = "[" <> s <> "]"
+
+curly :: ByteString -> ByteString
+curly s = "{" <> s <> "}"
 
 paren :: ByteString -> ByteString
 paren s = "(" <> s <> ")"

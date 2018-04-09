@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 -- |
 -- Copyright   : Anders Claesson 2015
 -- Maintainer  : Anders Claesson <anders.claesson@gmail.com>
@@ -12,6 +13,7 @@ module HOPS.GF.Rat
     , maybeInteger
     , maybeInt
     , isRational
+    , isInteger
     , isInt
     , factorial
     , binomial
@@ -22,6 +24,8 @@ module HOPS.GF.Rat
 import Data.Ratio
 import Data.Vector (Vector, (!))
 import qualified Data.Vector as V
+import qualified Data.ByteString.Char8 as B
+import HOPS.Pretty
 
 -- | Rationals extended with two elements:
 data Rat
@@ -140,6 +144,11 @@ instance Floating Rat where
             q = toRational $ sqrt (fromInteger (denominator r) :: Double)
         in Val (p/q)
 
+instance Pretty Rat where
+    pretty DZ = "DZ"
+    pretty Indet = "Indet"
+    pretty (Val r) = B.concat [pretty (numerator r), "/", pretty (denominator r)]
+
 lift :: (Double -> Double) -> Rat -> Rat
 lift f (Val r) = Val $ toRational $ f (fromRational r)
 lift _ Indet = Indet
@@ -160,6 +169,11 @@ isInt (Val r) | denominator r == 1 =
         maxInt = toInteger (maxBound :: Int)
     in minInt <= i && i <= maxInt
 isInt _  = False
+
+-- | Is the given element an Integer?
+isInteger :: Rat -> Bool
+isInteger (Val r) | denominator r == 1 = True
+isInteger _ = False
 
 -- | `maybeRational` of @Val x@ is @Just x@, otherwise it is `Nothing`.
 maybeRational :: Rat -> Maybe Rational

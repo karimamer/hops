@@ -1,6 +1,6 @@
 % HOPS Tutorial
 % Anders Claesson
-% 27 March 2016
+% 5 April 2017
 
 # HOPS Tutorial
 
@@ -336,7 +336,7 @@ $ hops 'A000108-A001006'
 }
 ```
 
-The first time you use A-numbers with `hops` you will be asked to run
+Before using A-numbers with `hops` you should run
 `hops --update`. This will download `https://oeis.org/stripped.gz` and
 unpack it into `.oeis-data/stripped` in your home
 directory. Alternatively, you can do this by hand using `wget` and
@@ -344,27 +344,26 @@ directory. Alternatively, you can do this by hand using `wget` and
 
 ## Misc transformations
 
-HOPS knows about many of the
-[transformations used by the OEIS](https://oeis.org/transforms.html).
-As an example, the sequence [A067145](https://oeis.org/A067145)
-claims to shift left under reversion:
+HOPS knows about many combinatorial transformations.
+As an example, the sequence [A038072](https://oeis.org/A038072)
+claims to shift left under the Euler transform:
 
 ```
-$ sloane A067145 | jq '.seq=(.seq[:10]|@csv)'
+$ sloane A038072
 {
-  "hops": "A067145",
-  "name": "Shifts left under reversion.",
-  "seq": "1,1,-1,3,-13,69,-419,2809,-20353,157199"
+  "hops": "A038072",
+  "name": "Shifts left under Euler transform.",
+  "seq": [-1,-1,-1,0,1,2,0,-3,-5,-1]
 }
 ```
 
 Let's test that claim:
 
 ```
-$ hops 'REVERT(A067145)-LEFT(A067145)'
+$ hops 'f=A038072;euler(f)-shift(f)'
 {
-  "hops":"REVERT(A067145)-LEFT(A067145)",
-  "seq":[0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+  "hops": "f=A038072;euler(f)-shift(f)",
+  "seq": "0,0,0,0,0,0,0,0,0,0,0,0,0,0"
 }
 ```
 
@@ -376,30 +375,25 @@ transformations we are interested in. E.g. if we create a file
 `transforms.hops` containing
 
 ```
-BINOMIAL(stdin)
-EULER(stdin)
-REVEGF(stdin)
-STIRLING(stdin)
+stdin^2
+revert(x*stdin)
+dirichlet(stdin,stdin^2)
 ```
 then we can apply all of these transforms to `1/(1-x)` as follows:
 
 ```
-$ hops '1/(1-x)' | hops --prec=9 -f transforms.hops
+$ hops '1/(1-x)' | hops -f transforms.hops
 {
-  "hops":"f=1/(1-x);BINOMIAL(f)",
-  "seq":[1,2,4,8,16,32,64,128,256]
+  "hops": "f=1/(1-x);f^2",
+  "seq": "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15"
 }
 {
-  "hops":"f=1/(1-x);EULER(f)",
-  "seq":[1,2,3,5,7,11,15,22]
+  "hops": "f=1/(1-x);revert(x*f)",
+  "seq": "0,1,-1,1,-1,1,-1,1,-1,1,-1,1,-1,1,-1"
 }
 {
-  "hops":"f=1/(1-x);REVEGF(f)",
-  "seq":[1,-2,9,-64,625,-7776,117649,-2097152]
-}
-{
-  "hops":"f=1/(1-x);STIRLING(f)",
-  "seq":[1,2,5,15,52,203,877,4140]
+  "hops": "f=1/(1-x);dirichlet(f,f^2)",
+  "seq": "1,3,4,7,6,12,8,15,13,18,12,28,14,24,24"
 }
 ```
 
